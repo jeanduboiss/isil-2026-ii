@@ -23,10 +23,14 @@
             </p>
         </div>
         <c:url var="logoutUrl" value="/logout"/>
-        <form method="post" action="${logoutUrl}">
-            <input type="hidden" name="${_csrf.parameterName}" value="${_csrf.token}">
-            <button type="submit">Cerrar sesión</button>
-        </form>
+        <c:url var="reportesUrl" value="/reportes/pedidos"/>
+        <nav class="acciones">
+            <a href="${reportesUrl}">Ver reportes</a>
+            <form method="post" action="${logoutUrl}">
+                <input type="hidden" name="${_csrf.parameterName}" value="${_csrf.token}">
+                <button type="submit">Cerrar sesión</button>
+            </form>
+        </nav>
         <div class="flujo">
             DispatcherServlet → Controller → Service → RestClient → inventario-service · Pedido → H2
         </div>

@@ -24,6 +24,13 @@ public class SecurityConfig {
             .requestMatchers("/h2-console/**").denyAll()
             .requestMatchers(HttpMethod.POST, "/pedidos")
               .hasAnyRole("OPERADOR")
+            // PA3: módulo de consulta y supervisión (vista JSP y API JSON de reportes)
+            .requestMatchers(HttpMethod.GET, "/reportes/**")
+              .hasAnyRole("OPERADOR", "CONSULTA")
+            .requestMatchers(HttpMethod.GET,
+                "/api/v1/pedidos/busqueda-avanzada",
+                "/api/v1/pedidos/clientes-frecuentes")
+              .hasAnyRole("OPERADOR", "CONSULTA")
             .requestMatchers(HttpMethod.GET, "/api/v1/pedidos", "/api/v1/pedidos/**")
               .hasAnyRole("OPERADOR", "CONSULTA")
             .requestMatchers(HttpMethod.GET, "/pedidos")

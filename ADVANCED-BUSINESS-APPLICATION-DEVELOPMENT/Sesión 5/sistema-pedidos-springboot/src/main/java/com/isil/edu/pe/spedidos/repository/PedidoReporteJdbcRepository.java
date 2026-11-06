@@ -2,12 +2,14 @@ package com.isil.edu.pe.spedidos.repository;
 
 import com.isil.edu.pe.spedidos.entity.Pedido;
 import com.isil.edu.pe.spedidos.repository.mapper.PedidoRowMapper;
+import com.isil.edu.pe.spedidos.repository.projection.ClienteFrecuenteProjection;
 import com.isil.edu.pe.spedidos.repository.projection.ProductoVendidoProjection;
 import com.isil.edu.pe.spedidos.repository.projection.ResumenPedidosProjection;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
@@ -145,6 +147,77 @@ public class PedidoReporteJdbcRepository {
                 valorMonetario(
                     rs.getBigDecimal(
                         "importe_acumulado"
+                    )
+                )
+            )
+    );
+  }
+
+  /**
+   * Busca pedidos de un cliente cuyo total sea mayor o igual
+   * al monto indicado. Los valores viajan como parámetros con nombre.
+   */
+  public List<Pedido> buscarPedidosPorClienteYTotalMinimo(
+      String cliente, BigDecimal totalMinimo) {
+    String sql = """
+        SELECT %s
+        FROM pedido
+        WHERE LOWER(cliente)
+              LIKE LOWER(:cliente)
+          AND total >= :totalMinimo
+        ORDER BY id DESC
+        """.formatted(COLUMNAS_PEDIDO);
+
+    MapSqlParameterSource parametros = new MapSqlParameterSource()
+        .addValue("cliente", "%" + cliente.trim() + "%")
+        .addValue("totalMinimo", totalMinimo);
+
+    return namedParameterJdbcTemplate.query(
+        sql,
+        parametros,
+        pedidoRowMapper
+    );
+  }
+
+  /**
+   * Consolida los pedidos por cliente y devuelve solo
+   * los clientes con al menos minPedidos pedidos.
+   */
+  public List<ClienteFrecuenteProjection> listarClientesFrecuentes(int minPedidos) {
+    String sql = """
+        SELECT
+            cliente,
+            COUNT(*) AS total_pedidos,
+            SUM(cantidad) AS total_unidades,
+            SUM(total) AS importe_acumulado,
+            ROUND(AVG(total), 2) AS ticket_promedio
+        FROM pedido
+        GROUP BY cliente
+        HAVING COUNT(*) >= :minPedidos
+        ORDER BY
+            importe_acumulado DESC,
+            cliente ASC
+        """;
+
+    MapSqlParameterSource parametros = new MapSqlParameterSource()
+        .addValue("minPedidos", minPedidos);
+
+    return namedParameterJdbcTemplate.query(
+        sql,
+        parametros,
+        (rs, rowNum) ->
+            new ClienteFrecuenteProjection(
+                rs.getString("cliente"),
+                rs.getLong("total_pedidos"),
+                rs.getLong("total_unidades"),
+                valorMonetario(
+                    rs.getBigDecimal(
+                        "importe_acumulado"
+                    )
+                ),
+                valorMonetario(
+                    rs.getBigDecimal(
+                        "ticket_promedio"
                     )
                 )
             )

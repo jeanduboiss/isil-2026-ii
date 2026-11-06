@@ -2,10 +2,12 @@ package com.isil.edu.pe.spedidos.controller;
 
 import static org.springframework.hateoas.server.mvc.WebMvcLinkBuilder.linkTo;
 
+import com.isil.edu.pe.spedidos.controller.dto.ClienteFrecuenteDto;
 import com.isil.edu.pe.spedidos.controller.dto.PedidoResponse;
 import com.isil.edu.pe.spedidos.controller.dto.ProductoVendidoDto;
 import com.isil.edu.pe.spedidos.controller.dto.ResumenPedidosDto;
 import com.isil.edu.pe.spedidos.service.PedidoReporteService;
+import java.math.BigDecimal;
 import java.util.List;
 import org.springframework.hateoas.CollectionModel;
 import org.springframework.hateoas.Link;
@@ -72,6 +74,35 @@ public class PedidoReporteController {
         linkPedidos().withRel("pedidos")
     );
     return ResponseEntity.ok(coleccion);
+  }
+
+  /**
+   * PA3: búsqueda avanzada por cliente y total mínimo (Spring JDBC).
+   * Las validaciones viven en el Service; los errores se traducen a 400
+   * en PedidoReporteApiExceptionHandler.
+   */
+  @GetMapping(value = "/busqueda-avanzada", produces = MediaType.APPLICATION_JSON_VALUE)
+  public ResponseEntity<List<PedidoResponse>> buscarPorClienteYTotalMinimo(
+      @RequestParam String cliente, @RequestParam BigDecimal totalMinimo) {
+    List<PedidoResponse> pedidos = reporteService
+        .buscarPedidosPorClienteYTotalMinimo(cliente, totalMinimo)
+        .stream()
+        .map(PedidoResponse::from)
+        .toList();
+    return ResponseEntity.ok(pedidos);
+  }
+
+  /**
+   * PA3: clientes con al menos minPedidos pedidos (GROUP BY / HAVING).
+   */
+  @GetMapping(value = "/clientes-frecuentes", produces = MediaType.APPLICATION_JSON_VALUE)
+  public ResponseEntity<List<ClienteFrecuenteDto>> listarClientesFrecuentes(
+      @RequestParam int minPedidos) {
+    List<ClienteFrecuenteDto> clientes = reporteService.listarClientesFrecuentes(minPedidos)
+        .stream()
+        .map(ClienteFrecuenteDto::from)
+        .toList();
+    return ResponseEntity.ok(clientes);
   }
 
   private Link linkPedidos() {

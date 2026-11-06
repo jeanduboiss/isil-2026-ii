@@ -1,11 +1,14 @@
 package com.isil.edu.pe.spedidos.service.impl;
 
 import com.isil.edu.pe.spedidos.entity.Pedido;
+import com.isil.edu.pe.spedidos.exception.ParametroReporteInvalidoException;
 import com.isil.edu.pe.spedidos.repository.PedidoReporteJdbcRepository;
 import com.isil.edu.pe.spedidos.repository.projection.ResumenPedidosProjection;
 import com.isil.edu.pe.spedidos.service.PedidoReporteService;
+import com.isil.edu.pe.spedidos.service.domain.ClienteFrecuente;
 import com.isil.edu.pe.spedidos.service.domain.ProductoVendido;
 import com.isil.edu.pe.spedidos.service.domain.ResumenPedidos;
+import java.math.BigDecimal;
 import java.util.List;
 import org.springframework.stereotype.Service;
 
@@ -49,5 +52,38 @@ public class PedidoReporteServiceImpl implements PedidoReporteService {
         )
         .toList();
 
+  }
+
+  @Override
+  public List<Pedido> buscarPedidosPorClienteYTotalMinimo(String cliente, BigDecimal totalMinimo) {
+    if (cliente == null || cliente.isBlank()) {
+      throw new ParametroReporteInvalidoException("cliente",
+          "El cliente es obligatorio para la búsqueda avanzada.");
+    }
+    if (totalMinimo == null || totalMinimo.signum() < 0) {
+      throw new ParametroReporteInvalidoException("totalMinimo",
+          "El total mínimo debe ser mayor o igual a 0.");
+    }
+    return jdbcRepository.buscarPedidosPorClienteYTotalMinimo(cliente.trim(), totalMinimo);
+  }
+
+  @Override
+  public List<ClienteFrecuente> listarClientesFrecuentes(int minPedidos) {
+    if (minPedidos < 1) {
+      throw new ParametroReporteInvalidoException("minPedidos",
+          "El mínimo de pedidos debe ser mayor o igual a 1.");
+    }
+    return jdbcRepository.listarClientesFrecuentes(minPedidos)
+        .stream()
+        .map(item ->
+            new ClienteFrecuente(
+                item.cliente(),
+                item.totalPedidos(),
+                item.totalUnidades(),
+                item.importeAcumulado(),
+                item.ticketPromedio()
+            )
+        )
+        .toList();
   }
 }
