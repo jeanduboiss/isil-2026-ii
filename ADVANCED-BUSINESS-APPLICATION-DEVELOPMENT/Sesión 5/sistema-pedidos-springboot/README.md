@@ -27,6 +27,140 @@ El proyecto conserva una interfaz **Spring MVC + JSP** y expone una **API JSON**
 13. [Spring JDBC y reportes — Sesión 9](#13-spring-jdbc-y-reportes--sesión-9)
 14. [Referencias técnicas](#14-referencias-técnicas)
 
+**PA3:** [Módulo de consulta y supervisión de pedidos](#pa3--módulo-de-consulta-y-supervisión-de-pedidos)
+
+---
+
+## PA3 — Módulo de consulta y supervisión de pedidos
+
+> Autor: Jean Franco Dubois Benites · Rama: `feature/pa3-dubois`
+
+Evolución individual que agrega búsquedas y consolidados nuevos sobre la base de pedidos, con **Spring JDBC** (consultas), **Spring MVC + JSP** (vista), **API JSON** y **Spring Security** (roles y CSRF). El CRUD existente con Spring Data JPA y la integración HTTP con `inventario-service` se mantienen sin cambios.
+
+### Tecnologías
+
+Java 21 · Spring Boot 4.1 · Spring MVC + JSP (JSTL) · Spring Security · Spring JDBC (`NamedParameterJdbcTemplate`) · Spring Data JPA · MySQL 8+ (ejecución) · H2 (pruebas) · JUnit 5 · Mockito · Maven.
+
+### Cambios por capa
+
+| Capa | Archivo | Cambio |
+|------|---------|--------|
+| Repository (JDBC) | `repository/PedidoReporteJdbcRepository` | `buscarPedidosPorClienteYTotalMinimo(cliente, totalMinimo)`: parámetros con nombre, reutiliza `PedidoRowMapper`, `ORDER BY id DESC`. `listarClientesFrecuentes(minPedidos)`: `GROUP BY cliente HAVING COUNT(*) >= :minPedidos`. |
+| Proyección | `repository/projection/ClienteFrecuenteProjection` | `cliente`, `totalPedidos`, `totalUnidades`, `importeAcumulado`, `ticketPromedio`. |
+| Service | `service/PedidoReporteService(Impl)` | Valida `cliente` no vacío, `totalMinimo >= 0`, `minPedidos >= 1` y lanza `ParametroReporteInvalidoException`. |
+| API REST | `controller/PedidoReporteController` + `PedidoReporteApiExceptionHandler` | Dos endpoints JSON nuevos; errores traducidos a 400 (parámetro inválido) o 503 (`DataAccessException`). |
+| MVC/JSP | `controller/PedidoReporteWebController` + `WEB-INF/views/reportes-pedidos.jsp` | `GET /reportes/pedidos` carga en el `Model` el resumen, la búsqueda avanzada y los clientes frecuentes. |
+| Seguridad | `config/SecurityConfig` | Reglas GET explícitas para `/reportes/**` y los endpoints nuevos (OPERADOR, CONSULTA). `POST /pedidos` sigue exclusivo de OPERADOR y CSRF sigue activo. |
+
+### Requisitos
+
+- JDK 21 y Maven 3.9+.
+- MySQL 8+ en `localhost:3306`.
+- `inventario-service` (Sesión 4) en `http://localhost:8082/inventario-service` para registrar pedidos.
+
+### Base de datos: `database/Script_BD_usuario_MySql.sql`
+
+```bash
+mysql -u root -p < database/Script_BD_usuario_MySql.sql
+```
+
+Crea la base `pedidosdb` y el usuario de laboratorio `spedidos_app`. La tabla `pedido` la genera Hibernate al iniciar.
+
+### Variables de entorno
+
+| Variable | Valor por defecto (laboratorio) |
+|----------|---------------------------------|
+| `DB_URL` | `jdbc:mysql://localhost:3306/pedidosdb?serverTimezone=America/Lima` |
+| `DB_USERNAME` | `spedidos_app` |
+| `DB_PASSWORD` | contraseña de laboratorio del script (reemplazar fuera del laboratorio) |
+| `PEDIDOS_OPERADOR_PASSWORD` / `PEDIDOS_CONSULTA_PASSWORD` | contraseñas de los usuarios en memoria |
+
+### Orden de arranque
+
+1. MySQL y el script `Script_BD_usuario_MySql.sql`.
+2. `inventario-service` (puerto 8082): `mvn clean wildfly:run` en `Sesión 4/inventario-service`.
+3. Sistema de Pedidos (puerto 8081):
+
+```bash
+export DB_URL="jdbc:mysql://localhost:3306/pedidosdb?serverTimezone=America/Lima"
+export DB_USERNAME="spedidos_app"
+export DB_PASSWORD="<contraseña>"
+mvn spring-boot:run
+```
+
+4. Abrir `http://localhost:8081/sistema-pedidos/reportes/pedidos`.
+
+### Usuarios y roles de laboratorio
+
+| Usuario | Rol | Reportes (`/reportes/**`, API GET) | `POST /pedidos` |
+|---------|-----|------------------------------------|-----------------|
+| `operador` | OPERADOR | Sí | Sí (con token CSRF) |
+| `consulta` | CONSULTA | Sí | No (403) |
+| anónimo | — | Redirige a `/login` | Redirige a `/login` |
+
+### Rutas nuevas
+
+| Método y ruta | Respuesta |
+|---------------|-----------|
+| `GET /reportes/pedidos?cliente=&totalMinimo=&minPedidos=` | Vista JSP `reportes-pedidos` (400 con mensaje si un parámetro es inválido) |
+| `GET /api/v1/pedidos/busqueda-avanzada?cliente={valor}&totalMinimo={monto}` | 200 + lista JSON de pedidos · 400 + error JSON |
+| `GET /api/v1/pedidos/clientes-frecuentes?minPedidos={n}` | 200 + lista JSON de clientes · 400 + error JSON |
+
+### Ejemplos
+
+La aplicación usa **form login**, por lo que `curl` primero inicia sesión (con el token CSRF del formulario) y luego reutiliza la cookie de sesión:
+
+```bash
+BASE=http://localhost:8081/sistema-pedidos
+TOKEN=$(curl -s -c cj.txt -b cj.txt "$BASE/login" | sed -n 's/.*name="_csrf"[^>]*value="\([^"]*\)".*/\1/p')
+curl -s -c cj.txt -b cj.txt --data-urlencode "username=consulta" \
+  --data-urlencode "password=$PEDIDOS_CONSULTA_PASSWORD" --data-urlencode "_csrf=$TOKEN" "$BASE/login"
+
+curl -s -b cj.txt "$BASE/api/v1/pedidos/busqueda-avanzada?cliente=Ana&totalMinimo=800"
+curl -s -b cj.txt "$BASE/api/v1/pedidos/clientes-frecuentes?minPedidos=2"
+```
+
+Respuesta de `clientes-frecuentes?minPedidos=2` con los pedidos de prueba:
+
+```json
+[
+  { "cliente": "Ana Torres",   "totalPedidos": 3, "totalUnidades": 4, "importeAcumulado": 3590.00, "ticketPromedio": 1196.67 },
+  { "cliente": "Carlos Perez", "totalPedidos": 2, "totalUnidades": 3, "importeAcumulado": 1820.00, "ticketPromedio": 910.00 }
+]
+```
+
+Error de validación (400):
+
+```json
+{
+  "status": 400,
+  "error": "Bad Request",
+  "parametro": "totalMinimo",
+  "mensaje": "El total mínimo debe ser mayor o igual a 0.",
+  "fecha": "2026-11-05T10:15:30"
+}
+```
+
+### Pruebas
+
+```bash
+mvn test
+```
+
+Pruebas nuevas de la PA3 (16), además de las 20 del proyecto base:
+
+| Clase | Tipo | Qué verifica |
+|-------|------|--------------|
+| `PedidoReporteAvanzadoJdbcRepositoryTest` | Integración H2 | Filtros de la búsqueda avanzada, orden por id, SQL parametrizado ante texto malicioso, `GROUP BY`/`HAVING` y agregados. |
+| `PedidoReporteServiceImplTest` | Unitaria Mockito | Rechazo de cliente vacío, total negativo y `minPedidos = 0` sin llamar al repositorio; mapeo a dominio. |
+| `PedidoReporteAvanzadoIntegrationTest` | MockMvc + Security | JSON de ambos endpoints, 400 por parámetros inválidos, vista con `Model`, anónimo redirigido a login, rol sin permiso rechazado. |
+
+### Limitaciones
+
+- Usuarios en memoria (sin persistencia ni JWT/OAuth2, fuera del alcance).
+- La búsqueda por cliente es parcial e insensible a mayúsculas (`LIKE`), igual que la búsqueda existente.
+- Los reportes leen la base local: si `inventario-service` no está disponible, los reportes siguen funcionando y solo el registro de pedidos responde 503.
+
 ---
 
 ## 1. Objetivos y evolución académica

@@ -32,7 +32,7 @@
             </form>
         </nav>
         <div class="flujo">
-            DispatcherServlet → PedidoReporteWebController → PedidoReporteService → PedidoReporteJdbcRepository → MySQL
+            WebController → Service → JdbcRepository → MySQL
         </div>
     </header>
 
